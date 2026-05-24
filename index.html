@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Martins DeMatrix Multiplayer Tic Tac Toe</title>
+
+<script src="https://cdn.ably.com/lib/ably.min-1.js"></script>
+
+<style>
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family:Arial,sans-serif;
+}
+
+body{
+    height:100vh;
+    overflow:hidden;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    background:linear-gradient(-45deg,#ff0080,#7928ca,#00c6ff,#00ff99);
+    background-size:400% 400%;
+    animation:bg 12s ease infinite;
+}
+
+@keyframes bg{
+
+    0%{
+        background-position:0% 50%;
+    }
+
+    50%{
+        background-position:100% 50%;
+    }
+
+    100%{
+        background-position:0% 50%;
+    }
+
+}
+
+#splash{
+
+    position:fixed;
+    inset:0;
+    background:black;
+
+    display:flex;
+    justify-content:center;
+    align-items:center;
+
+    z-index:999;
+
+}
+
+#splash h1{
+
+    color:white;
+    font-size:4rem;
+
+    text-shadow:
+    0 0 20px cyan,
+    0 0 40px magenta;
+
+    animation:pulse 1s infinite alternate;
+
+}
+
+@keyframes pulse{
+
+    from{
+        transform:scale(1);
+    }
+
+    to{
+        transform:scale(1.1);
+    }
+
+}
+
+#app{
+
+    display:none;
+    width:100%;
+    max-width:430px;
+    padding:20px;
+
+}
+
+.card{
+
+    background:rgba(255,255,255,0.12);
+
+    backdrop-filter:blur(12px);
+
+    border-radius:25px;
+
+    padding:20px;
+
+    color:white;
+
+    text-align:center;
+
+    box-shadow:0 0 25px rgba(0,0,0,0.4);
+
+}
+
+h2{
+
+    margin-bottom:15px;
+
+}
+
+input{
+
+    width:100%;
+    padding:12px;
+
+    border:none;
+
+    border-radius:12px;
+
+    margin-bottom:10px;
+
+    font-size:1rem;
+
+}
+
+button{
+
+    padding:12px 18px;
+
+    border:none;
+
+    border-radius:12px;
+
+    cursor:pointer;
+
+    font-weight:bold;
+
+    margin:5px;
+
+    background:#00ffee;
+
+    color:black;
+
+    transition:0.3s;
+
+}
+
+button:hover{
+
+    transform:scale(1.05);
+
+}
+
+#status{
+
+    margin:15px 0;
+    font-weight:bold;
+    font-size:1.1rem;
+
+}
+
+.board{
+
+    display:grid;
+
+    grid-template-columns:repeat(3,1fr);
+
+    gap:10px;
+
+    margin-top:20px;
+
+}
+
+.cell{
+
+    aspect-ratio:1/1;
+
+    background:rgba(255,255,255,0.2);
+
+    border-radius:18px;
+
+    display:flex;
+
+    justify-content:center;
+    align-items:center;
+
+    font-size:3rem;
+
+    font-weight:bold;
+
+    cursor:pointer;
+
+    transition:0.2s;
+
+}
+
+.cell:hover{
+
+    background:rgba(255,255,255,0.35);
+
+}
+
+#chooseSide{
+
+    margin-top:15px;
+
+}
+
+@media(max-width:500px){
+
+    #splash h1{
+
+        font-size:2.3rem;
+
+    }
+
+    .cell{
+
+        font-size:2.4rem;
+
+    }
+
+}
+
+</style>
+</head>
+
+<body>
+
+<div id="splash">
+
+    <h1>Martins DeMatrix</h1>
+
+</div>
+
+<div id="app">
+
+    <div class="card">
+
+        <h2>Multiplayer Tic Tac Toe</h2>
+
+        <input
+        type="text"
+        id="roomInput"
+        placeholder="Enter Room ID">
+
+        <div id="chooseSide">
+
+            <button onclick="joinRoom('X')">
+                Play as X
+            </button>
+
+            <button onclick="joinRoom('O')">
+                Play as O
+            </button>
+
+        </div>
+
+        <div id="status">
+
+            Choose X or O to Join
+
+        </div>
+
+        <div class="board">
+
+            <div class="cell" data-index="0"></div>
+            <div class="cell" data-index="1"></div>
+            <div class="cell" data-index="2"></div>
+
+            <div class="cell" data-index="3"></div>
+            <div class="cell" data-index="4"></div>
+            <div class="cell" data-index="5"></div>
+
+            <div class="cell" data-index="6"></div>
+            <div class="cell" data-index="7"></div>
+            <div class="cell" data-index="8"></div>
+
+        </div>
+
+        <button onclick="restartGame()">
+
+            Restart Game
+
+        </button>
+
+    </div>
+
+</div>
+
+<audio autoplay loop id="drama.mp3">
+
+<source
+src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73467.mp3?filename=future-bass-logo-108997.mp3"
+type="audio/mpeg">
+
+</audio>
+
+<script>
+
+setTimeout(()=>{
+
+    document.getElementById("splash").style.display="none";
+
+    document.getElementById("app").style.display="block";
+
+    document.getElementById("music").play();
+
+},5000);
+
+const ably = new Ably.Realtime(
+'K5T2bQ.Djgwyw:c77k2pmuwmHdXITDP6iLPw1lIR4zRuULvx3ffFy_7zU'
+);
+
+let channel;
+
+let board =
+["","","","","","","","",""];
+
+let currentPlayer = "X";
+
+let mySymbol = "";
+
+let joined = false;
+
+let gameOver = false;
+
+const cells =
+document.querySelectorAll(".cell");
+
+const statusText =
+document.getElementById("status");
+
+async function joinRoom(symbol){
+
+    if(joined){
+
+        alert("Already joined");
+
+        return;
+
+    }
+
+    const roomId =
+    document.getElementById("roomInput").value.trim();
+
+    if(!roomId){
+
+        alert("Enter Room ID");
+
+        return;
+
+    }
+
+    mySymbol = symbol;
+
+    channel = ably.channels.get(roomId);
+
+    await channel.attach();
+
+    joined = true;
+
+    statusText.innerText =
+    "You are " + mySymbol;
+
+    channel.subscribe("state",(msg)=>{
+
+        const data = msg.data;
+
+        board = data.board;
+
+        currentPlayer =
+        data.currentPlayer;
+
+        gameOver =
+        data.gameOver;
+
+        updateBoard();
+
+        if(gameOver){
+
+            statusText.innerText =
+            data.message;
+
+        }else{
+
+            updateStatus();
+
+        }
+
+    });
+
+    channel.subscribe("restart",()=>{
+
+        board =
+        ["","","","","","","","",""];
+
+        currentPlayer = "X";
+
+        gameOver = false;
+
+        updateBoard();
+
+        updateStatus();
+
+    });
+
+}
+
+cells.forEach(cell=>{
+
+    cell.addEventListener("click",async ()=>{
+
+        if(!joined){
+
+            alert("Choose X or O");
+
+            return;
+
+        }
+
+        const index =
+        parseInt(cell.dataset.index);
+
+        if(board[index] !== "") return;
+
+        if(gameOver) return;
+
+        if(currentPlayer !== mySymbol){
+
+            alert("Not your turn");
+
+            return;
+
+        }
+
+        board[index] = mySymbol;
+
+        let message = "";
+
+        if(checkWinner(mySymbol)){
+
+            gameOver = true;
+
+            message =
+            mySymbol + " Wins!";
+
+        }else if(board.every(c=>c !== "")){
+
+            gameOver = true;
+
+            message = "Draw Game";
+
+        }else{
+
+            currentPlayer =
+            currentPlayer === "X"
+            ? "O"
+            : "X";
+
+        }
+
+        updateBoard();
+
+        await channel.publish("state",{
+
+            board,
+            currentPlayer,
+            gameOver,
+            message
+
+        });
+
+        if(gameOver){
+
+            statusText.innerText =
+            message;
+
+        }else{
+
+            updateStatus();
+
+        }
+
+    });
+
+});
+
+function updateBoard(){
+
+    cells.forEach((cell,index)=>{
+
+        cell.innerText = board[index];
+
+    });
+
+}
+
+function updateStatus(){
+
+    if(gameOver) return;
+
+    if(currentPlayer === mySymbol){
+
+        statusText.innerText =
+        "Your Turn (" + mySymbol + ")";
+
+    }else{
+
+        statusText.innerText =
+        "Opponent Turn";
+
+    }
+
+}
+
+async function restartGame(){
+
+    board =
+    ["","","","","","","","",""];
+
+    currentPlayer = "X";
+
+    gameOver = false;
+
+    updateBoard();
+
+    updateStatus();
+
+    await channel.publish(
+    "restart",{});
+
+}
+
+function checkWinner(player){
+
+    const wins = [
+
+        [0,1,2],
+        [3,4,5],
+        [6,7,8],
+
+        [0,3,6],
+        [1,4,7],
+        [2,5,8],
+
+        [0,4,8],
+        [2,4,6]
+
+    ];
+
+    return wins.some(combo=>{
+
+        return combo.every(index=>{
+
+            return board[index]
+            === player;
+
+        });
+
+    });
+
+}
+
+</script>
+
+</body>
+</html>
